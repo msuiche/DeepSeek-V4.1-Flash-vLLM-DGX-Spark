@@ -103,6 +103,22 @@ Detailed tables: [results/boot1017g/report-vs-boot10.md](results/boot1017g/repor
 - `DSV41_INDEXER_TP_SPLIT on`;
 - 11-13 GiB available per node while serving, after the bench (1017a: 8-9 GiB).
 
+## 69-scenario tool eval (`boot1017g`, thinking off)
+
+The same `2wild-model-eval/run_eval.py` command as boot 10 (`EVAL_THINKING=off`, `--timeout 300`), run against the live endpoint ([results/eval69](results/eval69/eval69-boot1017g.md)):
+
+| | boot 10 (09-10) | **1017g** |
+|---|---|---|
+| Quality | 98.6 (136/138) | **98.6 (136/138)** |
+| Pass / partial / fail | 67 / 2 / 0 | **67 / 2 / 0** |
+| Responsiveness (median turn) | 94.3 (1,620 ms) | **96.0 (1,287 ms)** |
+| Deployability | 97.3 | **97.8** |
+| tok/s during the suite | 41.6 | **43.0** |
+
+The two partials are the same in both runs:
+- TC-44: a reasonable guess without confirming intent.
+- TC-67: guessed a ticker without resolving the pronoun.
+
 ## How to run it
 
 On Reddie as root:
@@ -147,6 +163,7 @@ Rollbacks without a rebuild:
 
 - `launch/`: the launcher, the fan-out and the go scripts `boot1017a` to `boot1017h`. Each go script lists its one change at the bottom.
 - `tools/`: the restore, gate, postcheck, bench and lever scripts, the image copy, the Engram chain, the patch-set builder and `screencmp.py`.
+- `results/eval69/`: the 69-scenario scorecard, the run script and the log.
 - `results/boot1017{a,b,c,d,g}/`: bench JSON and markdown, reports, postcheck, restore log and head log. `boot1017g` also has `args.json`, `env.txt` and `vision-tools.txt`.
 - [BOOTLOG.md](BOOTLOG.md): timestamps for every step.
 

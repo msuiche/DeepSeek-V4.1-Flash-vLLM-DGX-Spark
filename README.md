@@ -1,6 +1,6 @@
 # DeepSeek-V4.1-Flash on four NVIDIA DGX Sparks (vLLM, TP4, DSpark, CUDA graphs)
 
-> **DeepSeek-V4.1-Flash-1017, 2026-10-17 ([runs/2026-10-17-1017](runs/2026-10-17-1017/README.md)):** the 1017 checkpoint serves on the four Sparks (TP4, 300K context, **1,523,740-token KV pool**), on boot 10's recipe plus the speed-run levers that don't need the EXL3 pack. Full bench on a fresh boot: one stream code 76.3 tok/s, tables 75.8, JSON 63.2, reasoning 55.6; six streams 165.7 tok/s aggregate (boot 10: 131.9); cold prefill 1,903-2,201 tok/s (boot 10: 902-1,539). Restore with `bash /root/restore_1017.sh 1017g` on Reddie as root.
+> **DeepSeek-V4.1-Flash-1017, 2026-10-17 ([runs/2026-10-17-1017](runs/2026-10-17-1017/README.md)):** the 1017 checkpoint serves on the four Sparks (TP4, 300K context, **1,523,740-token KV pool**), on boot 10's recipe plus the speed-run levers that don't need the EXL3 pack. Full bench on a fresh boot: one stream code 76.3 tok/s, tables 75.8, JSON 63.2, reasoning 55.6; six streams 165.7 tok/s aggregate (boot 10: 131.9); cold prefill 1,903-2,201 tok/s (boot 10: 902-1,539); 69-scenario tool eval 98.6 (67/2/0). Restore with `bash /root/restore_1017.sh 1017g` on Reddie as root.
 
 > **Speed run 2, 2026-09-19 ([runs/2026-09-19-speedrun2](runs/2026-09-19-speedrun2/README.md)):** serving now at 500K context, 16 streams. Against the lane as found that night (same full bench): C2-C6 throughput +2 to +16%, TTFT 0.205 s at one stream (-13%), cold prefill 1,939-2,048 tok/s (+41 to +46%), idle code 95.3 tok/s (+46%), boot 63 s faster, and C8-C12 serving for the first time (C12 coding 475 tok/s aggregate). Two findings matter more than the deltas: a lane that has served for 15 hours runs ~30% slower on prefill than the same config fresh (cause open; a restart recovers it), and 500K context costs nothing over 300K once you compare fresh to fresh. New levers: the SwiGLU clamp moved inside the cuda-exl3 GLU kernel (image `exl3b-roce-lim`), the Engram all-gather on the RoCE path, and a draft loader that reads 3 shards instead of 49. Also there: [runs/2026-09-17-nvfp4](runs/2026-09-17-nvfp4/STATE.md), fourteen boots of `nvidia/DeepSeek-V4.1-Flash-NVFP4` that never served, with the memory mechanism measured (COW-broken private mappings of the shards during the fused-MoE expert copy) and the one lever that held (`--enable-expert-parallel --enable-ep-weight-filter`, 194.6 of 302 GiB skipped per rank).
 
@@ -46,6 +46,7 @@ DeepSeek's 1017 update ships the same config, index and tokenizer as the Septemb
 - The EXL3 speed-run lane is still faster at decode (C6 190.0), because its 3.5 bpw experts read about 17% fewer bytes per token. On these stock weights, prefill matches or beats it at three of four lengths.
 - DSpark on 1017 accepts 53% of drafted tokens, a mean of 3.65 tokens per step over the whole bench.
 - Checks: vision and tools 7/7.
+- 69-scenario tool eval (thinking off): **98.6**, 67 pass / 2 partial / 0 fail. Boot 10 scored the same; responsiveness is up (96.0 vs 94.3).
 
 ## Three Sparks: the EXL3 TP3 lane
 
