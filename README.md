@@ -1,5 +1,7 @@
 # DeepSeek-V4.1-Flash on four NVIDIA DGX Sparks (vLLM, TP4, DSpark, CUDA graphs)
 
+> **DeepSeek-V4.1-Flash-1017, 2026-10-17 ([runs/2026-10-17-1017](runs/2026-10-17-1017/README.md)):** the 1017 checkpoint serves on the four Sparks (TP4, 300K context, **1,523,740-token KV pool**), on boot 10's recipe plus the speed-run levers that don't need the EXL3 pack. Full bench on a fresh boot: one stream code 76.3 tok/s, tables 75.8, JSON 63.2, reasoning 55.6; six streams 165.7 tok/s aggregate (boot 10: 131.9); cold prefill 1,903-2,201 tok/s (boot 10: 902-1,539). Restore with `bash /root/restore_1017.sh 1017g` on Reddie as root.
+
 > **Speed run 2, 2026-09-19 ([runs/2026-09-19-speedrun2](runs/2026-09-19-speedrun2/README.md)):** serving now at 500K context, 16 streams. Against the lane as found that night (same full bench): C2-C6 throughput +2 to +16%, TTFT 0.205 s at one stream (-13%), cold prefill 1,939-2,048 tok/s (+41 to +46%), idle code 95.3 tok/s (+46%), boot 63 s faster, and C8-C12 serving for the first time (C12 coding 475 tok/s aggregate). Two findings matter more than the deltas: a lane that has served for 15 hours runs ~30% slower on prefill than the same config fresh (cause open; a restart recovers it), and 500K context costs nothing over 300K once you compare fresh to fresh. New levers: the SwiGLU clamp moved inside the cuda-exl3 GLU kernel (image `exl3b-roce-lim`), the Engram all-gather on the RoCE path, and a draft loader that reads 3 shards instead of 49. Also there: [runs/2026-09-17-nvfp4](runs/2026-09-17-nvfp4/STATE.md), fourteen boots of `nvidia/DeepSeek-V4.1-Flash-NVFP4` that never served, with the memory mechanism measured (COW-broken private mappings of the shards during the fused-MoE expert copy) and the one lever that held (`--enable-expert-parallel --enable-ep-weight-filter`, 194.6 of 302 GiB skipped per rank).
 
 > **Speed run, 2026-09-14 ([runs/2026-09-14-speedrun](runs/2026-09-14-speedrun/README.md)):** the uncensored build (EXL3-Pollard-Abliterated) now serves on `exl3tp4b-ablit-best`. Against the same lane's baseline on the same full bench: six-stream throughput 189.97 tok/s (+13.3%), C2-C6 throughput +9 to +13%, cold prefill about 2,000 tok/s (+34 to +38%), TTFT 0.22 s at one stream (-20%), KV pool 3,757,748 tokens (+14.7%), and 1M context proven on the same stack. The levers: b12x RoCE one-shot all-reduce (@original-el8, @lukealonso), Engram fast staging and 128 read threads, an indexer prefill TP-split, `NCCL_MAX_NCHANNELS=8` (bot-lab-21) and `expandable_segments:False` (ecohash-co). Restore it with `bash /root/restore_exl3tp4b_ablit_best.sh` on Reddie as root.
@@ -19,6 +21,31 @@
 - **Vision and tool calling are on:** up to 4 images per request, tool calls including parallel calls and a full round trip. 7/7 end-to-end checks pass ([below](#vision-and-tool-calling-on-in-the-serving-config)).
   - 1M max context was proven on a separate boot, with a 1,078,380-token DSpark KV pool.
 - Nothing on this page is a projection.
+
+## DeepSeek-V4.1-Flash-1017 on 4x DGX Spark
+
+DeepSeek's 1017 update ships the same config, index and tokenizer as the September release (sha256-identical) with all 48 shards new, Engram tables included. So the swap is a model-path change plus fresh node-local Engram rows. Boot 10's row ranges apply unchanged. The run log, launch kit, patch sets and every bench are in [runs/2026-10-17-1017](runs/2026-10-17-1017/README.md).
+
+- **Serving config `boot1017g`:**
+  - boot 10 (vLLM `dsv41-feat` overlay, DSpark k=5, CUDA graphs FULL_AND_PIECEWISE, Engram on disk with node-local rows, vision and tools on, gmu 0.80);
+  - plus `NCCL_MAX_NCHANNELS=8`, Engram fast staging with 128 read threads, the b12x RoCE one-shot all-reduce and all-gather (image `vllm-dsv41:exl3b-roce`), the indexer prefill TP-split, and `expandable_segments:False`.
+  - Context 300K, KV pool 1,523,740 tokens (5.08x).
+- **Launch:** `launch/dsv41-tp4-1017.sh` is `launch/dsv41-tp4.sh` with two knobs, `MODEL_DIR` and `SERVED_NAMES`. One boot per lever through 1017d, then the rest together.
+- **No boot died.** About 11 minutes from kick to serving.
+
+| | boot 10 | 1017 on boot 10's recipe (1017a) | **1017 serving (1017g)** |
+|---|---|---|---|
+| C1 / C3 / C6 aggregate tok/s (8 categories) | 38.0 / 78.7 / 131.9 | 41.9 / 84.4 / 129.1 | **48.5 / 102.6 / 165.7** |
+| one-stream tok/s: code / tables / JSON / math / reasoning | 73.8 / 55.4 / 52.1 / 50.9 / 37.8 | 70.4 / 49.2 / 52.8 / 63.0 / 46.2 | **76.3 / 75.8 / 63.2 / 56.2 / 55.6** |
+| one-stream tok/s: prose / summary / narrative | 24.4 / 25.7 / 24.9 | 27.9 / 31.3 / 31.4 | **36.1 / 35.8 / 31.7** |
+| TTFT at C1 (s) | 0.44 | 0.37 | **0.28** |
+| cold prefill tok/s at 3K / 12K / 47K / 93K tokens | 902 / 1,027 / 1,539 / 1,194 | 1,359 / 1,299 / 1,217 / 1,335 | **1,903 / 1,937 / 2,194 / 2,201** |
+| KV pool at 300K | 1,070,168 | 1,316,807 | **1,523,740** |
+
+- Counting, as a peak ceiling only: 87.1 tok/s at one stream on 1017g.
+- The EXL3 speed-run lane is still faster at decode (C6 190.0), because its 3.5 bpw experts read about 17% fewer bytes per token. On these stock weights, prefill matches or beats it at three of four lengths.
+- DSpark on 1017 accepts 53% of drafted tokens, a mean of 3.65 tokens per step over the whole bench.
+- Checks: vision and tools 7/7.
 
 ## Three Sparks: the EXL3 TP3 lane
 
