@@ -50,6 +50,39 @@ DeepSeek's 1017 update ships the same config, index and tokenizer as the Septemb
 - Checks: vision and tools 7/7.
 - 69-scenario tool eval (thinking off): **98.6**, 67 pass / 2 partial / 0 fail. Boot 10 scored the same; responsiveness is up (96.0 vs 94.3).
 
+## GLP steering (optional, off by default)
+
+The lane can serve under a GLP control vector from the [weightless](https://github.com/msuiche/weightless) project —
+the format's origin, where the spec ([`docs/spec/GLP.md`](https://github.com/msuiche/weightless/blob/main/docs/spec/GLP.md))
+and the published vectors live: a small GGUF
+sidecar of per-layer unit directions (`glp.mode=project`, hook `residual_stream_post_layer`), projected off the
+residual stream after every steered decoder layer. The published vector for the 1017 checkpoint is
+[`msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-39-L1-39-a0.75`](https://huggingface.co/msuiche/DeepSeek-V4.1-Flash-1017-abliterated-cyber-GLP-39-L1-39-a0.75)
+(39 layers, alpha_default 0.75). With `WEIGHTLESS_STEER_PATH` unset the boot is byte-for-byte stock.
+
+One-time setup per node (offline, no GPU): build the steering patch set from any base set — it adds the image's
+`deepseek_v4_1` model file with the steering hotfix applied:
+
+```bash
+bash tools/make-steering-patchset.sh dsv41-1017-fast dsv41-glp
+```
+
+Put the vector at the same host path on all four nodes, then boot with it (fail-closed: a missing file, a patch
+set without the steering model.py, or a vector the engine cannot apply exactly — wrong mode, hook, width or layer
+range — refuses the boot instead of serving unsteered):
+
+```bash
+PATCH_NAME=dsv41-glp WEIGHTLESS_STEER_PATH=/var/tmp/vectors/glp-1017.gguf bash launch/boot_dsv41.sh
+```
+
+`WEIGHTLESS_STEER_ALPHA` overrides the file's `glp.alpha_default`; `WEIGHTLESS_STEER_LAYERS` restricts to a comma
+list of layer ids. A steered boot logs `weightless GLP steering active: hook=residual_stream_post_layer
+alpha=0.750 ... layers=39` in every rank's container log. Validate a vector without booting:
+`WEIGHTLESS_STEER_PATH=<file> python3 tools/hotfix-dsv41-steering.py --check` (runs the exact loader the engine
+injects; needs torch). Steering changes the replies — that is its point — and it composes with DSpark spec decode
+(the verifier is steered; the draft model is not, so acceptance can dip — the draft proposes from an unsteered
+stream). No steered benchmark numbers exist yet; run `bench/v41bench.py` against a steered boot to produce them.
+
 ## Three Sparks: the EXL3 TP3 lane
 
 The same model on **three** DGX Sparks instead of four, using bot-lab-21's [EXL3 3.5 bpw build](https://huggingface.co/bot-lab-21/DeepSeek-V4.1-Flash-EXL3-3.5bpw-Pollard) of the routed experts (everything else is the release's FP8). V4.1 had no TP3 path in vLLM, so this lane adds one: virtual attention heads (64 padded to 72), a vocabulary split that works at TP3, Engram rows for three ranks, a streaming weight loader, and a fix that lets the DSpark drafter's 128 experts load on three ranks. The full write-up, with every boot and what failed, is in [docs/EXL3-TP3.md](docs/EXL3-TP3.md).

@@ -23,6 +23,8 @@
 #   PARSERS      0 (default) | 1 => --tool-call-parser deepseek_v41 --enable-auto-tool-choice --reasoning-parser deepseek_v41 (needs the Rust parser ext)
 #   RUST_FE      0 (default) => VLLM_USE_RUST_FRONTEND=0
 #   VLLM_EXTRA   extra vllm serve args;  NCCL_EXTRA extra "-e K=V" docker env pairs
+#   WEIGHTLESS_STEER_PATH   GLP control vector (host path, same file on all four) => steered serving
+#                           (needs tools/make-steering-patchset.sh's patch set; unset = stock). See README.
 set -euo pipefail
 NODE_RANK="${1:?usage: dsv41-tp4.sh <0|1|2|3>}"
 
@@ -91,6 +93,20 @@ if [ "$ENGRAM_DISK" = "1" ] && [ "${ENGRAM_LOCAL:-0}" = "1" ] && [ -f "$ENGRAM_L
   ENGRAM_LOCAL_MOUNT="-v $ENGRAM_LOCAL_HOST:/engram-local:ro"
   ENGRAM_ENV="$ENGRAM_ENV -e DSV41_ENGRAM_DIR=/engram-local"
 fi
+
+# GLP steering (optional, off by default; README "GLP steering"): a weightless GLP sidecar projected off
+# the residual stream after every steered layer. WEIGHTLESS_STEER_PATH is the vector's HOST path (the same
+# file on all four nodes); it mounts at /vectors/control.gguf. Needs a patch set built by
+# tools/make-steering-patchset.sh; unset => the steering code stays inert and the boot is stock.
+STEER_ENV=""
+if [ -n "${WEIGHTLESS_STEER_PATH:-}" ]; then
+  test -f "$WEIGHTLESS_STEER_PATH" || { echo "GLP VECTOR MISSING at $WEIGHTLESS_STEER_PATH" >&2; exit 3; }
+  grep -q "steering-hotfix" "$PATCH_DIR/model.py" 2>/dev/null \
+    || { echo "PATCH_DIR=$PATCH_DIR has no steering model.py; run tools/make-steering-patchset.sh first" >&2; exit 3; }
+  STEER_ENV="-v $WEIGHTLESS_STEER_PATH:/vectors/control.gguf:ro -e WEIGHTLESS_STEER_PATH=/vectors/control.gguf"
+  [ -n "${WEIGHTLESS_STEER_ALPHA:-}" ] && STEER_ENV="$STEER_ENV -e WEIGHTLESS_STEER_ALPHA=$WEIGHTLESS_STEER_ALPHA"
+  [ -n "${WEIGHTLESS_STEER_LAYERS:-}" ] && STEER_ENV="$STEER_ENV -e WEIGHTLESS_STEER_LAYERS=$WEIGHTLESS_STEER_LAYERS"
+fi
 mkdir -p "$CACHE_HOST_PATH"
 docker rm -f "$NAME" 2>/dev/null || true
 sync; echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
@@ -138,7 +154,7 @@ docker run --gpus all -d --name "$NAME" --restart no \
   -e VLLM_CACHE_ROOT="/cache/vllm-$EXP_NAME" \
   -e VLLM_ENGINE_READY_TIMEOUT_S=3600 -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   -e VLLM_USE_RUST_FRONTEND=$RUST_FE -e VLLM_HAS_FLASHINFER_CUBIN=1 \
-  $ENGRAM_ENV $GRAPH_ENV \
+  $ENGRAM_ENV $GRAPH_ENV $STEER_ENV \
   -e TORCH_CUDA_ARCH_LIST=12.1a -e FLASHINFER_CUDA_ARCH_LIST=12.1a -e FLASHINFER_DISABLE_VERSION_CHECK=1 \
   -e NCCL_NET=IB -e NCCL_IB_DISABLE=0 -e NCCL_IB_HCA=rocep1s0f0 -e NCCL_IB_GID_INDEX=3 \
   -e NCCL_IB_ROCE_VERSION_NUM=2 -e NCCL_IB_ADDR_FAMILY=AF_INET -e NCCL_IB_ADDR_RANGE=192.168.192.0/24 \
@@ -158,6 +174,6 @@ docker run --gpus all -d --name "$NAME" --restart no \
     --distributed-executor-backend mp --nnodes 4 --node-rank "$NODE_RANK" \
     --master-addr "$HEAD_IP" --master-port "$MPORT" $HEADLESS $VLLM_EXTRA
 
-echo "launched $NAME rank=$NODE_RANK exp=$EXP_NAME image=$IMAGE patches=$PATCH_DIR gmu=$GMU maxlen=$MAXLEN seqs=$SEQS eager=$EAGER cg=${CUDAGRAPH_MODE}[${CG_SIZES}] spec=$SPEC adapt=$SPEC_ADAPT engram_disk=$ENGRAM_DISK engram_local=${ENGRAM_LOCAL_MOUNT:+yes} text_only=$TEXT_ONLY avail=${AVAIL_GB}GiB"
+echo "launched $NAME rank=$NODE_RANK exp=$EXP_NAME image=$IMAGE patches=$PATCH_DIR gmu=$GMU maxlen=$MAXLEN seqs=$SEQS eager=$EAGER cg=${CUDAGRAPH_MODE}[${CG_SIZES}] spec=$SPEC adapt=$SPEC_ADAPT engram_disk=$ENGRAM_DISK engram_local=${ENGRAM_LOCAL_MOUNT:+yes} steer=${WEIGHTLESS_STEER_PATH:+yes} text_only=$TEXT_ONLY avail=${AVAIL_GB}GiB"
 sleep 3
 docker ps --format '{{.Names}} {{.Status}}' | grep "$NAME" || { echo "$NAME exited" >&2; docker logs --tail 40 "$NAME" >&2; exit 1; }
