@@ -80,3 +80,5 @@ Prepared but not booted: vLLM #57432 (DSpark acceptance fix) and #56441 (KV-only
 - **gitbisector** (issue #8): the NCCL proxy-buffer analysis; measured here as neutral on a RoCE-decode fleet.
 - **vLLM team:** dsv41-feat, PRs #57432 and #56441 (ported, parked).
 - **Kai:** the original disk Engram and SM12x page patches this lane still runs on.
+- **drowzeys (Keys):** the abliterated `wo_b` overlay in the uncensored pack this lane serves.
+- Full list: [CREDITS.md](../../CREDITS.md).

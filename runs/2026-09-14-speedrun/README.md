@@ -33,7 +33,7 @@ Two full-bench runs of the final stack. Run 1 (10:05 UTC) is b1 plus the indexer
 ## Starting point (baseline, as found at 02:00 ET)
 
 `exl3tp4b-ablit`:
-- bot-lab-21's EXL3 3.5 bpw experts with the abliterated `wo_b` overlay;
+- bot-lab-21's EXL3 3.5 bpw experts with drowzeys' abliterated `wo_b` overlay;
 - TP4 on 4 Sparks, DSpark k=5, CUDA graphs FULL_AND_PIECEWISE;
 - 300K context, gmu 0.80, vision and tool calling on;
 - node-local Engram rows.
@@ -148,7 +148,8 @@ Tonight's levers came from other people's work:
 - **tmolteno:** issue #1 data.
 - **Jason @original-el8 and Luke Alonso @lukealonso (local-inference-lab):** b12x RoCEnante, the one-shot RoCE all-reduce (b12x#295, #315, commits aa90a277 and 1a7e3ec2), and its vLLM integration (local-inference-lab/vllm#597). Tonight's biggest decode win.
 - **@tobymao:** the b12x#313 stuck-rank report, which is why the final config runs a generation liveness probe.
-- **The tuning backlog shipped in the model folder** (`TUNING_BACKLOG.md`): pointed us at the RoCE all-reduce, the draft-page study and the block_m and NCCL thread levers.
+- **The tuning backlog shipped in the model folder** (bot-lab-21's `TUNING_BACKLOG.md`): pointed us at the RoCE all-reduce, the draft-page study and the block_m and NCCL thread levers.
+- **drowzeys (Keys):** the abliterated `wo_b` overlay ([DeepSeek-V4.1-Flash-Abliterated-Cybersecurity-Unleashed](https://huggingface.co/drowzeys/DeepSeek-V4.1-Flash-Abliterated-Cybersecurity-Unleashed)) that makes this lane uncensored.
 - **@NNNtrance:** the draft-KV page study (Zeuss5/cuda-exl3#2). It does not carry over to V4.1's cache groups, but it led to the pool-geometry notes in `STATE.md`.
 - **NVIDIA's NCCL tuning guide** (Williams, Mubarak, Caton, Nicely) and **UMD PSSG** (arXiv 2511.09557): the channel and algorithm reasoning behind the NCCL experiments.
 - **The vLLM team** (dsv41-feat), and **Kai** (the original Engram-on-disk and SM12x patches).

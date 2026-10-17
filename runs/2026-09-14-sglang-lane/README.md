@@ -26,7 +26,7 @@ Goal: serve DeepSeek-V4.1-Flash UNCENSORED on SGLang across the same four DGX Sp
 ## What runs
 
 - **Engine:** upstream SGLang, image `lmsysorg/sglang:dev-dsv41` (arm64, commit `da64c5cb`), TP4 across 4 nodes with expert parallel 4, DSpark k=5, 300K context, vision (4 images) and tool calling on, thinking off by default.
-- **Weights:** the official `deepseek-ai/DeepSeek-V4.1-Flash` checkpoint (MXFP4 experts, FP8 dense) with Kai's uncensored overlay (`wo_b` of layers 10-35, 52 tensors, same dtypes and shapes as the originals). The folder `DeepSeek-V4.1-Flash-Ablit` hardlinks every official file and repoints those 52 tensors in the index, so it costs no extra disk. SGLang cannot load EXL3, so this lane does not use the EXL3 checkpoint.
+- **Weights:** the official `deepseek-ai/DeepSeek-V4.1-Flash` checkpoint (MXFP4 experts, FP8 dense) with the uncensored overlay (drowzeys' abliterated `wo_b` of layers 10-35, 52 tensors, same dtypes and shapes as the originals, grafted by Kai). The folder `DeepSeek-V4.1-Flash-Ablit` hardlinks every official file and repoints those 52 tensors in the index, so it costs no extra disk. SGLang cannot load EXL3, so this lane does not use the EXL3 checkpoint.
 
 ## What we built (patch set `sglang-dsv41-disk`, 4 files, mounted over the image)
 
@@ -43,7 +43,9 @@ Built by `patches/make_sglang_disk_patch.py` from the image's own files with anc
 
 - **SGLang** (Apache-2.0): the engine, the DeepSeek-V4.1 support, the SM12x kernels, and the files our patches edit.
 - **0xSero** ([deepseek-v4.1-flash-4x-rtx-pro-6000](https://github.com/0xSero/deepseek-v4.1-flash-4x-rtx-pro-6000), MIT): the Engram-on-NVMe idea and the SM12x extra-KV and indexer-metadata issues our fixes address. Our code is original.
-- **Kai (Tech2Wild):** the original Engram-on-disk design and the uncensored overlay.
+- **drowzeys (Keys):** the abliterated `wo_b` overlay ([DeepSeek-V4.1-Flash-Abliterated-Cybersecurity-Unleashed](https://huggingface.co/drowzeys/DeepSeek-V4.1-Flash-Abliterated-Cybersecurity-Unleashed), MIT) and its recipe.
+- **Kai (Tech2Wild):** the original Engram-on-disk design and the index-repointed graft of the uncensored overlay.
+- Full list: [CREDITS.md](../../CREDITS.md).
 
 ## Memory setting (`--mem-fraction-static`, the gmu equivalent)
 

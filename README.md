@@ -1,10 +1,12 @@
 # DeepSeek-V4.1-Flash on four NVIDIA DGX Sparks (vLLM, TP4, DSpark, CUDA graphs)
 
+Built on DeepSeek-AI's model, vLLM, FlashInfer, b12x RoCEnante (local-inference-lab), cuda-exl3, bot-lab-21's EXL3 build and drowzeys' abliteration overlay, plus fixes and reports from people running this recipe on their own Sparks. Everyone is listed in [Credits](#credits) and [CREDITS.md](CREDITS.md).
+
 > **DeepSeek-V4.1-Flash-1017, 2026-10-17 ([runs/2026-10-17-1017](runs/2026-10-17-1017/README.md)):** the 1017 checkpoint serves on the four Sparks (TP4, 300K context, **1,523,740-token KV pool**), on boot 10's recipe plus the speed-run levers that don't need the EXL3 pack. Full bench on a fresh boot: one stream code 76.3 tok/s, tables 75.8, JSON 63.2, reasoning 55.6; six streams 165.7 tok/s aggregate (boot 10: 131.9); cold prefill 1,903-2,201 tok/s (boot 10: 902-1,539); 69-scenario tool eval 98.6 (67/2/0). Restore with `bash /root/restore_1017.sh 1017g` on Reddie as root.
 
 > **Speed run 2, 2026-09-19 ([runs/2026-09-19-speedrun2](runs/2026-09-19-speedrun2/README.md)):** serving now at 500K context, 16 streams. Against the lane as found that night (same full bench): C2-C6 throughput +2 to +16%, TTFT 0.205 s at one stream (-13%), cold prefill 1,939-2,048 tok/s (+41 to +46%), idle code 95.3 tok/s (+46%), boot 63 s faster, and C8-C12 serving for the first time (C12 coding 475 tok/s aggregate). Two findings matter more than the deltas: a lane that has served for 15 hours runs ~30% slower on prefill than the same config fresh (cause open; a restart recovers it), and 500K context costs nothing over 300K once you compare fresh to fresh. New levers: the SwiGLU clamp moved inside the cuda-exl3 GLU kernel (image `exl3b-roce-lim`), the Engram all-gather on the RoCE path, and a draft loader that reads 3 shards instead of 49. Also there: [runs/2026-09-17-nvfp4](runs/2026-09-17-nvfp4/STATE.md), fourteen boots of `nvidia/DeepSeek-V4.1-Flash-NVFP4` that never served, with the memory mechanism measured (COW-broken private mappings of the shards during the fused-MoE expert copy) and the one lever that held (`--enable-expert-parallel --enable-ep-weight-filter`, 194.6 of 302 GiB skipped per rank).
 
-> **Speed run, 2026-09-14 ([runs/2026-09-14-speedrun](runs/2026-09-14-speedrun/README.md)):** the uncensored build (EXL3-Pollard-Abliterated) now serves on `exl3tp4b-ablit-best`. Against the same lane's baseline on the same full bench: six-stream throughput 189.97 tok/s (+13.3%), C2-C6 throughput +9 to +13%, cold prefill about 2,000 tok/s (+34 to +38%), TTFT 0.22 s at one stream (-20%), KV pool 3,757,748 tokens (+14.7%), and 1M context proven on the same stack. The levers: b12x RoCE one-shot all-reduce (@original-el8, @lukealonso), Engram fast staging and 128 read threads, an indexer prefill TP-split, `NCCL_MAX_NCHANNELS=8` (bot-lab-21) and `expandable_segments:False` (ecohash-co). Restore it with `bash /root/restore_exl3tp4b_ablit_best.sh` on Reddie as root.
+> **Speed run, 2026-09-14 ([runs/2026-09-14-speedrun](runs/2026-09-14-speedrun/README.md)):** the uncensored build (EXL3-Pollard-Abliterated: bot-lab-21's EXL3 Pollard experts with drowzeys' abliterated `wo_b` overlay) now serves on `exl3tp4b-ablit-best`. Against the same lane's baseline on the same full bench: six-stream throughput 189.97 tok/s (+13.3%), C2-C6 throughput +9 to +13%, cold prefill about 2,000 tok/s (+34 to +38%), TTFT 0.22 s at one stream (-20%), KV pool 3,757,748 tokens (+14.7%), and 1M context proven on the same stack. The levers: b12x RoCE one-shot all-reduce (@original-el8, @lukealonso), Engram fast staging and 128 read threads, an indexer prefill TP-split, `NCCL_MAX_NCHANNELS=8` (bot-lab-21) and `expandable_segments:False` (ecohash-co). Restore it with `bash /root/restore_exl3tp4b_ablit_best.sh` on Reddie as root.
 
 > **SGLang lane, experimental ([runs/2026-09-14-sglang-lane](runs/2026-09-14-sglang-lane/README.md)):** the same uncensored model on upstream SGLang across the four Sparks, with our disk-backed Engram reader (a native row reader that runs inside the CUDA graph), an index-honoring loader for the uncensored overlay, and two SM12x fixes. It serves with a 9.3M-token KV pool (2.5x the vLLM lane) but decodes 2-2.5x slower here and exhausted node memory under the full bench, so vLLM stays the default.
 
@@ -346,6 +348,7 @@ In boot order. Details in `docs/`.
 | `results/exl3tp3a*/` | Per-boot bench, report, comparisons and vision/tool checks for the TP3 lane. |
 | `docs/` | Recipe and one post-mortem per failure. |
 | `results/` | Head logs of every boot, proofs, bench output, pre-launch GPU and network checks. |
+| `CREDITS.md`, `third_party/` | Who and what this recipe builds on, and the verbatim license and notice files of the third-party code included here. |
 
 **Fleet:**
 - Reddie is the head: model on local NVMe, exported over NFS.
@@ -356,8 +359,19 @@ In boot order. Details in `docs/`.
 
 **Community ports:** [8x DGX Spark, TP8, 1M context, on dealignai's UNCENSORED-FP8 (im0xMagnus)](https://github.com/im0xMagnus/deepseek-v4.1-flash-uncensored-8x-dgx-spark) -- this recipe carried to eight ranks: the three launcher deltas eight ranks need, the sha pin, TP8 measurements at 300K and 1M.
 
-**Credits:**
-- The vLLM team, for the day-0 `dsv41-feat` branch.
+## Credits
+
+The full list, with links, licenses and what each piece is used for, is in [CREDITS.md](CREDITS.md). Third-party license and notice files are kept verbatim in [`third_party/`](third_party/).
+
+- DeepSeek-AI, for DeepSeek-V4.1-Flash and the 1017 update (MIT), including the DSpark draft layers.
+- The vLLM team, for the day-0 `dsv41-feat` branch ([vllm-project/vllm#56214](https://github.com/vllm-project/vllm/pull/56214), Yongye Zhu and co-authors).
+- FlashInfer, for the SM120 sparse-MLA decode and MXFP8 kernels.
+- Jason Cook ([@original-el8](https://github.com/original-el8)) and Luke Alonso ([@lukealonso](https://github.com/lukealonso)), [local-inference-lab/b12x](https://github.com/local-inference-lab/b12x): RoCEnante, the one-shot RoCE all-reduce and all-gather, and its vLLM integration.
+- [bot-lab-21](https://huggingface.co/bot-lab-21/DeepSeek-V4.1-Flash-EXL3-3.5bpw-Pollard), for the EXL3 3.5 bpw Pollard checkpoint, its V4.1 cuda-exl3 overlays, and the tuning ladder and backlog; WestWaters, for the Pollard method.
+- [Zeuss5/cuda-exl3](https://github.com/Zeuss5/cuda-exl3) (with @NNNtrance), for the EXL3 plugin and kernels; turboderp, for ExLlamaV3 and the EXL3 format.
+- drowzeys (Keys), for the [abliterated `wo_b` overlay](https://huggingface.co/drowzeys/DeepSeek-V4.1-Flash-Abliterated-Cybersecurity-Unleashed) behind the uncensored lanes.
+- SGLang, for the engine of the experimental SGLang lane; 0xSero, for the Engram-on-NVMe idea.
+- The community fleets and contributors who bisected, verified, measured and reported: ecohash-co, hyudryu, quengh, koldfrontier, gitbisector, im0xMagnus, tmolteno, pavolbiely, croberts012, tsw2k, yunwei37 and @tobymao.
 - Kai, for the first Engram-on-disk patch and the SM12x page-size patches.
 - The Engram-on-disk idea follows our own PLE-on-disk patch for Qwen3.8-Flash-Next.
-- Prior art acknowledged at the idea level: vLLM PR #54129 (`VLLM_PLE_MMAP`). No code was copied.
+- Prior art acknowledged at the idea level: vLLM PR #54129 (`VLLM_PLE_MMAP`, by Trosfy). No code was copied.

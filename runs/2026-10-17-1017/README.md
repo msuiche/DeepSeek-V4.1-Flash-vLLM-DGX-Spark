@@ -170,8 +170,9 @@ Rollbacks without a rebuild:
 ## Credits
 
 The levers are the same as in the 2026-09-14 speed run:
-- **bot-lab-21:** the `NCCL_MAX_NCHANNELS=8` measurement.
+- **bot-lab-21:** the `NCCL_MAX_NCHANNELS=8` measurement (bot-lab-21's credits ledger traces the lever to tenaiaiai's recipe).
 - **Jason @original-el8 and Luke Alonso @lukealonso** (local-inference-lab/b12x): the RoCEnante one-shot RoCE collectives and their vLLM integration.
 - **ecohash-co and hyudryu:** the `expandable_segments` finding (issue #2). koldfrontier's caveat from issue #9 does not apply here, because decode all-reduces run on the RoCE path.
 - **DeepSeek:** the 1017 checkpoint.
 - **vLLM team:** `dsv41-feat`.
+- Full list: [CREDITS.md](../../CREDITS.md).
